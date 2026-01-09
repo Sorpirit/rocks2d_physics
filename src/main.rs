@@ -82,6 +82,57 @@ impl Entity {
     }
 }
 
+fn verify(ents: &[Entity])
+{
+    for ent in ents {
+        if ent.transform.position.x.is_infinite() || ent.transform.position.x.is_nan() || 
+            ent.transform.position.y.is_infinite() || ent.transform.position.y.is_nan() || 
+            ent.transform.rotation.is_infinite() || ent.transform.rotation.is_nan()
+        {
+            panic!("Positional value out of range");
+        }
+    }
+}
+
+fn integrate(ents: &mut [Entity], dt: f32)
+{
+    for ent in ents {
+        ent.prev_transform = ent.transform;
+        
+        ent.velocity += Vector2::new(0.0, -9.81) * dt;
+
+        ent.transform.position += ent.velocity * dt;
+    }
+}
+
+fn ditstance_constraint(ents: &mut [Entity], dt: f32)
+{
+    let target_dist = 3.0;
+    let compliance = 0.00001;
+    for ent in ents {
+        let c = target_dist - ent.transform.position.length();
+        
+        if c.abs() < 0.0001 {
+            continue;
+        }
+
+        let normal = ent.transform.position.normalized();
+        
+        let alpha = compliance / dt.powi(2);
+        let w = ent.inv_mass;
+        let lambda = -c / (w + alpha);
+        
+        ent.transform.position += -normal * lambda * ent.inv_mass;
+    }
+}
+
+fn update_velocities(ents: &mut [Entity], dt: f32)
+{
+    for ent in ents {
+        ent.velocity = (ent.transform.position - ent.prev_transform.position) / dt;
+    }
+}
+
 fn main() {
     let window_w = 1024;
     let window_h = 1024;
@@ -104,12 +155,15 @@ fn main() {
     }; 
 
     let mut entities = vec![
-        Entity::new(Transform2D { position: Vector2::new(2.0, 0.0), rotation: 0.0 }, Shape::Circle(0.5), 1000.0),
-        Entity::new(Transform2D { position: Vector2::new(-1.0, 1.0), rotation: 0.0 }, Shape::Circle(1.0), 1000.0),
-        Entity::new(Transform2D { position: Vector2::new(0.5, 0.0), rotation: 0.0 }, Shape::Rectangle(1.0, 0.5), 1000.0),
+        Entity::new(Transform2D { position: Vector2::new(3.00, 0.0), rotation: 0.0 }, Shape::Circle(0.5), 1000.0),
+        Entity::new(Transform2D { position: Vector2::new(-2.0, 1.5), rotation: 0.0 }, Shape::Circle(1.0), 1000.0),
+        Entity::new(Transform2D { position: Vector2::new(0.5, -0.0), rotation: 0.0 }, Shape::Rectangle(1.0, 0.5), 1000.0),
     ];
 
     let mut total_time = 0.0;
+
+    let substeps = 16;
+    // let physics_dt: f32 = 1.0 / 60.0;
 
     while !rl.window_should_close() {
         let dt = rl.get_frame_time();
@@ -125,13 +179,17 @@ fn main() {
         let mouse_delta = rl.get_mouse_delta();
 
         // todo physics sim
-        for ent in &mut entities {
-            ent.transform.position.y = (total_time).sin();
-            ent.transform.rotation = (total_time).cos() * 1.0 * 3.14;
+        // at the start dt is not stalbe we want to skip physics untill it getst stable
+        if total_time > 0.6 {
+            let physics_dt = dt / substeps as f32;
+            for _ in 0..substeps {
+                integrate(&mut entities, physics_dt);
+                ditstance_constraint(&mut entities, physics_dt);
+                update_velocities(&mut entities, physics_dt);
+            }
+            verify(&entities);
         }
-
-        let target_ent = &mut entities[0];
-        target_ent.transform.position = (mouse_pos + camera.target - camera.offset) / world_scalar;
+        
 
         //rendering
         let mut d = rl.begin_drawing(&thread);
