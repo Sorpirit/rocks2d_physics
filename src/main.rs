@@ -50,9 +50,13 @@ fn calculate_mass(shape: Shape, density: f32) -> f32 {
 
 fn calculate_inertia(shape: Shape, mass: f32) -> f32 {
     match shape {
-        Shape::Circle(r) => mass * r * r / 4.0,
-        Shape::Rectangle(wh, hh) => mass * (wh * wh + hh * hh) / 4.0
+        Shape::Circle(r) => mass * r * r / 2.0,
+        Shape::Rectangle(wh, hh) => mass * (wh * wh + hh * hh) / 3.0
     }
+}
+
+fn cross2d(v1: Vector2, v2: Vector2) -> f32 {
+    (v1.x * v2.y) - (v1.y * v2.x)
 }
 
 
@@ -100,29 +104,37 @@ fn integrate(ents: &mut [Entity], dt: f32)
         ent.prev_transform = ent.transform;
         
         ent.velocity += Vector2::new(0.0, -9.81) * dt;
+        // ent.angular_velocity += .. * dt;
 
         ent.transform.position += ent.velocity * dt;
+        ent.transform.rotation += ent.angular_velocity * dt;
     }
 }
 
 fn ditstance_constraint(ents: &mut [Entity], dt: f32)
 {
     let target_dist = 3.0;
-    let compliance = 0.00001;
+    let compliance = 0.0;
     for ent in ents {
-        let c = target_dist - ent.transform.position.length();
+
+        let attachment_point = Vector2::new(1.0, 0.0);
+        let attachment_point = attachment_point.rotated(ent.transform.rotation) + ent.transform.position;
+        let rel = attachment_point - ent.transform.position;
+
+        let c = target_dist - attachment_point.length();
         
         if c.abs() < 0.0001 {
             continue;
         }
 
-        let normal = ent.transform.position.normalized();
+        let normal = -attachment_point.normalized();
         
         let alpha = compliance / dt.powi(2);
-        let w = ent.inv_mass;
+        let w = ent.inv_mass + ent.inv_inertia * cross2d(rel, normal).powi(2);
         let lambda = -c / (w + alpha);
         
-        ent.transform.position += -normal * lambda * ent.inv_mass;
+        ent.transform.position += normal * lambda * ent.inv_mass;
+        ent.transform.rotation += ent.inv_inertia * cross2d(rel, normal * lambda);
     }
 }
 
@@ -130,6 +142,7 @@ fn update_velocities(ents: &mut [Entity], dt: f32)
 {
     for ent in ents {
         ent.velocity = (ent.transform.position - ent.prev_transform.position) / dt;
+        ent.angular_velocity = (ent.transform.rotation - ent.prev_transform.rotation) / dt;
     }
 }
 
@@ -178,16 +191,21 @@ fn main() {
         let mouse_pos = rl.get_mouse_position();
         let mouse_delta = rl.get_mouse_delta();
 
+        let fast_worward = rl.is_key_down(KeyboardKey::KEY_F);
+
         // todo physics sim
         // at the start dt is not stalbe we want to skip physics untill it getst stable
         if total_time > 0.6 {
+            let p_steps = if fast_worward { 8 } else { 1 };
             let physics_dt = dt / substeps as f32;
-            for _ in 0..substeps {
-                integrate(&mut entities, physics_dt);
-                ditstance_constraint(&mut entities, physics_dt);
-                update_velocities(&mut entities, physics_dt);
+            for _ in 0..p_steps {
+                for _ in 0..substeps {
+                    integrate(&mut entities, physics_dt);
+                    ditstance_constraint(&mut entities, physics_dt);
+                    update_velocities(&mut entities, physics_dt);
+                }
+                verify(&entities);
             }
-            verify(&entities);
         }
         
 
@@ -209,14 +227,25 @@ fn main() {
             match ent.shape {
                 Shape::Circle(r) => {
                     r2d.draw_circle_v(view_pos, r * world_scalar.x, ent.color);
-                    r2d.draw_line_v(view_pos, view_pos + Vector2::new(r * world_scalar.x, 0.0).rotated(ent.transform.rotation), Color::BLACK);
+                    r2d.draw_line_v(view_pos, view_pos + Vector2::new(r, 0.0).rotated(ent.transform.rotation) * world_scalar, Color::BLACK);
+
+
+                    let attachment_point = Vector2::new(r, 0.0);
+                    let attachment_point = (attachment_point.rotated(ent.transform.rotation) + ent.transform.position) * world_scalar;
+                    r2d.draw_line_v(Vector2::zero(), attachment_point, Color::RED);
                 },
                 Shape::Rectangle(width_half, height_half) => {
                     let wh_view = width_half * world_scalar.x;
-                    let hh_view = height_half * world_scalar.x;
-                    r2d.draw_rectangle_pro(Rectangle { x:  view_pos.x, y: view_pos.y, width: wh_view * 2.0, height: hh_view * 2.0 }, Vector2::new(wh_view, hh_view), ent.transform.rotation.to_degrees(), ent.color);
+                    let hh_view = height_half * -world_scalar.y;
+                    r2d.draw_rectangle_pro(Rectangle { x:  view_pos.x, y: view_pos.y, width: wh_view * 2.0, height: hh_view * 2.0 }, Vector2::new(width_half, -height_half) * world_scalar, -ent.transform.rotation.to_degrees(), ent.color);
+                    
                     r2d.draw_circle_v(view_pos, 10.0, Color::YELLOW);
-                    r2d.draw_line_v(view_pos, view_pos + Vector2::new(wh_view, 0.0).rotated(ent.transform.rotation), Color::BLACK);
+
+                    r2d.draw_line_v(view_pos, view_pos + Vector2::new(width_half, 0.0).rotated(ent.transform.rotation) * world_scalar, Color::BLACK);
+
+                    let attachment_point = Vector2::new(1.0, 0.0);
+                    let attachment_point = (attachment_point.rotated(ent.transform.rotation) + ent.transform.position) * world_scalar;
+                    r2d.draw_line_v(Vector2::zero(), attachment_point, Color::RED);
                 }
             }
         }
