@@ -36,6 +36,16 @@ pub struct Entity {
     pub color: Color
 }
 
+pub struct DistanceConstraint {
+    pub body_index_1: usize,
+    pub body_index_2: usize,
+
+    pub local_attach_1: Vector2,
+    pub local_attach_2: Vector2,
+
+    pub target_distance: f32,
+    pub compliance: f32
+}
 
 fn calcualte_area(shape: Shape) -> f32 {
     match shape {
@@ -111,30 +121,67 @@ fn integrate(ents: &mut [Entity], dt: f32)
     }
 }
 
-fn ditstance_constraint(ents: &mut [Entity], dt: f32)
+fn ditstance_constraint(dist_const: &[DistanceConstraint], ents: &mut [Entity], dt: f32)
 {
-    let target_dist = 3.0;
-    let compliance = 0.0;
-    for ent in ents {
+    for dc in dist_const {
+        let en1 = &ents[dc.body_index_1];
+        let en2 = &ents[dc.body_index_2];
 
-        let attachment_point = Vector2::new(1.0, 0.0);
-        let attachment_point = attachment_point.rotated(ent.transform.rotation) + ent.transform.position;
-        let rel = attachment_point - ent.transform.position;
+        let rel_1 =  dc.local_attach_1.rotated(en1.transform.rotation);
+        let rel_2 =  dc.local_attach_2.rotated(en2.transform.rotation); 
 
-        let c = target_dist - attachment_point.length();
+        let attach_p1 = rel_1 + en1.transform.position;
+        let attach_p2 = rel_2 + en2.transform.position;
+
+        let dir = attach_p2 - attach_p1;
+        let c = dc.target_distance - dir.length();
         
         if c.abs() < 0.0001 {
             continue;
         }
 
-        let normal = -attachment_point.normalized();
+        let normal = dir.normalized();
+        
+        let alpha = dc.compliance / dt.powi(2);
+
+        let w1 = en1.inv_mass + en1.inv_inertia * cross2d(rel_1, normal).powi(2);
+        let w2 = en2.inv_mass + en2.inv_inertia * cross2d(rel_2, normal).powi(2);
+
+        let lambda = -c / (w1 + w2 + alpha);
+        
+        {
+            let en1 = &mut ents[dc.body_index_1];
+            en1.transform.position += normal * lambda * en1.inv_mass;
+            en1.transform.rotation += en1.inv_inertia * cross2d(rel_1, normal * lambda);
+        }
+        
+        {
+            let en2 = &mut ents[dc.body_index_2];
+            en2.transform.position -= normal * lambda * en2.inv_mass;
+            en2.transform.rotation += en2.inv_inertia * cross2d(rel_2, -normal * lambda);
+        }
+    }
+}
+
+fn prismatic_constraint(ents: &mut [Entity], dt: f32)
+{
+    let target_y = -1.0;
+    let compliance = 0.0;
+    for ent in ents {
+        let c = target_y - ent.transform.position.y;
+        
+        if c.abs() < 0.001 {
+            continue;
+        }
+
+        let normal = -Vector2::new(0.0, (target_y - ent.transform.position.y).abs()).normalized();
         
         let alpha = compliance / dt.powi(2);
-        let w = ent.inv_mass + ent.inv_inertia * cross2d(rel, normal).powi(2);
+        let w = ent.inv_mass;
         let lambda = -c / (w + alpha);
         
         ent.transform.position += normal * lambda * ent.inv_mass;
-        ent.transform.rotation += ent.inv_inertia * cross2d(rel, normal * lambda);
+        // ent.transform.rotation += ent.inv_inertia * cross2d(rel, normal * lambda);
     }
 }
 
@@ -168,9 +215,12 @@ fn main() {
     }; 
 
     let mut entities = vec![
-        Entity::new(Transform2D { position: Vector2::new(3.00, 0.0), rotation: 0.0 }, Shape::Circle(0.5), 1000.0),
-        Entity::new(Transform2D { position: Vector2::new(-2.0, 1.5), rotation: 0.0 }, Shape::Circle(1.0), 1000.0),
-        Entity::new(Transform2D { position: Vector2::new(0.5, -0.0), rotation: 0.0 }, Shape::Rectangle(1.0, 0.5), 1000.0),
+        Entity::new(Transform2D { position: Vector2::new(0.00, -1.0), rotation: 0.0 }, Shape::Rectangle(0.8, 0.4), 1000.0),
+        Entity::new(Transform2D { position: Vector2::new(1.5, -1.0), rotation: 0.0 }, Shape::Rectangle(1.5, 0.1), 1000.0),
+    ];
+
+    let mut dist_const = vec![
+        DistanceConstraint { body_index_1: 0, body_index_2: 1, local_attach_1: Vector2::zero(), local_attach_2: Vector2::new(1.5, 0.0), target_distance: 0.001, compliance: 0.0 }
     ];
 
     let mut total_time = 0.0;
@@ -193,6 +243,14 @@ fn main() {
 
         let fast_worward = rl.is_key_down(KeyboardKey::KEY_F);
 
+        {
+            let ent = &mut entities[0];
+            let speed = 5.0;
+
+            if rl.is_key_down(KeyboardKey::KEY_LEFT) { ent.velocity.x -= speed * dt; }
+            if rl.is_key_down(KeyboardKey::KEY_RIGHT) { ent.velocity.x += speed * dt; }
+        }
+
         // todo physics sim
         // at the start dt is not stalbe we want to skip physics untill it getst stable
         if total_time > 0.6 {
@@ -201,7 +259,8 @@ fn main() {
             for _ in 0..p_steps {
                 for _ in 0..substeps {
                     integrate(&mut entities, physics_dt);
-                    ditstance_constraint(&mut entities, physics_dt);
+                    ditstance_constraint(&dist_const, &mut entities, physics_dt);
+                    prismatic_constraint(&mut entities[0..1], physics_dt);
                     update_velocities(&mut entities, physics_dt);
                 }
                 verify(&entities);
@@ -228,11 +287,6 @@ fn main() {
                 Shape::Circle(r) => {
                     r2d.draw_circle_v(view_pos, r * world_scalar.x, ent.color);
                     r2d.draw_line_v(view_pos, view_pos + Vector2::new(r, 0.0).rotated(ent.transform.rotation) * world_scalar, Color::BLACK);
-
-
-                    let attachment_point = Vector2::new(r, 0.0);
-                    let attachment_point = (attachment_point.rotated(ent.transform.rotation) + ent.transform.position) * world_scalar;
-                    r2d.draw_line_v(Vector2::zero(), attachment_point, Color::RED);
                 },
                 Shape::Rectangle(width_half, height_half) => {
                     let wh_view = width_half * world_scalar.x;
@@ -242,10 +296,6 @@ fn main() {
                     r2d.draw_circle_v(view_pos, 10.0, Color::YELLOW);
 
                     r2d.draw_line_v(view_pos, view_pos + Vector2::new(width_half, 0.0).rotated(ent.transform.rotation) * world_scalar, Color::BLACK);
-
-                    let attachment_point = Vector2::new(1.0, 0.0);
-                    let attachment_point = (attachment_point.rotated(ent.transform.rotation) + ent.transform.position) * world_scalar;
-                    r2d.draw_line_v(Vector2::zero(), attachment_point, Color::RED);
                 }
             }
         }
