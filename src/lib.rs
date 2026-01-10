@@ -217,10 +217,11 @@ impl XPBDSolver {
     pub fn step(&self, state: &State, physics_dt: f32) {
         let mut entities = state.entities.borrow_mut();
         let dist_const = state.dist_const.borrow();
+        let sizeEn = entities.len() / 2;
 
         integrate(&mut entities, physics_dt);
         ditstance_constraint(&dist_const, &mut entities, physics_dt);
-        prismatic_constraint(&mut entities[0..1], physics_dt);
+        prismatic_constraint(&mut entities[0..sizeEn], physics_dt);
         update_velocities(&mut entities, physics_dt);
         verify(&entities);
     }
