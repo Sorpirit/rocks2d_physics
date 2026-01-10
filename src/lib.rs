@@ -168,15 +168,18 @@ fn ditstance_constraint(dist_const: &[DistanceConstraint], ents: &mut [Entity], 
 fn prismatic_constraint(ents: &mut [Entity], dt: f32)
 {
     let target_y = -1.0;
+    let target_x_range = 5.0;
     let compliance = 0.0;
     for ent in ents {
-        let c = target_y - ent.transform.position.y;
+        let x = if ent.transform.position.x.abs() > target_x_range { target_x_range * ent.transform.position.x.signum() } else { ent.transform.position.x };
+        let delta = ent.transform.position - Vector2::new(x, target_y);
+        let c = delta.length();
         
         if c.abs() < 0.001 {
             continue;
         }
 
-        let normal = -Vector2::new(0.0, (target_y - ent.transform.position.y).abs()).normalized();
+        let normal = delta.normalized();
         
         let alpha = compliance / dt.powi(2);
         let w = ent.inv_mass;
