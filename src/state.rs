@@ -15,7 +15,7 @@ pub mod state {
         }
 
         pub fn zero() -> Self {
-            Self { position: Vector2::zero(), rotation: 0.0 }
+            Self { position: Vector2::ZERO, rotation: 0.0 }
         }
     }
 
@@ -67,6 +67,15 @@ pub mod state {
         pub fn get_native_velocties(&self) -> &[f32] {
             &self.velocities
         }
+
+        pub fn from_native_transforms(&mut self, transforms: &[f32]) {
+            self.transforms.copy_from_slice(transforms);
+        }
+
+        pub fn from_native_velocities(&mut self, velocities: &[f32]) {
+            self.velocities.copy_from_slice(velocities);
+        }
+
 
         pub fn query_transform(&self, body_index: usize) -> Transform2D {
             let ti = body_index * TRANSFORM_2D_FLOAT_SIZE;

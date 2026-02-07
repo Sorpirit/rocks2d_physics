@@ -1,4 +1,4 @@
-use raylib::{ffi::Transform, math::Vector2};
+use raylib::{math::Vector2};
 
 use crate::{Control, Joint, MassProperty, Scene, Transform2D, state::state::State};
 
@@ -51,7 +51,7 @@ fn joint_contraints(state_in: &mut State, scene: &Scene, dt: f32) {
                     continue;
                 }
 
-                let normal = delta.normalized();
+                let normal = delta.normalize();
                 
                 let alpha = prismatic_joint.compliance / dt.powi(2);
                 let inv_mass = scene.mass_properties[prismatic_joint.body_i].inv_mass;
@@ -65,8 +65,8 @@ fn joint_contraints(state_in: &mut State, scene: &Scene, dt: f32) {
                 let mut b1_transform = state_in.query_transform(revolute_joint.body1_i);
                 let mut b2_transform = revolute_joint.body2_i.map(|b2i| state_in.query_transform(b2i)).unwrap_or(Transform2D::zero());
 
-                let rel_1 =  revolute_joint.local_attachment_b1.rotated(b1_transform.rotation);
-                let rel_2 =  revolute_joint.local_attachment_b2.rotated(b2_transform.rotation); 
+                let rel_1 =  Vector2::from_angle(b1_transform.rotation).rotate(revolute_joint.local_attachment_b1);
+                let rel_2 =  Vector2::from_angle(b2_transform.rotation).rotate(revolute_joint.local_attachment_b2);
 
                 let attach_p1 = rel_1 + b1_transform.position;
                 let attach_p2 = rel_2 + b2_transform.position;
@@ -78,7 +78,7 @@ fn joint_contraints(state_in: &mut State, scene: &Scene, dt: f32) {
                     continue;
                 }
 
-                let normal = -dir.normalized();
+                let normal = -dir.normalize();
                 
                 let alpha = revolute_joint.compliance / dt.powi(2);
 
@@ -112,8 +112,8 @@ fn update_velocities(state_in: &mut State, state_out: &mut State, dt: f32)
         let transform = state_in.query_transform(ei);
         let prev_transform = state_out.query_transform(ei);
 
-        let velocity = (transform.position - prev_transform.position) / dt;
-        let angular_velocity = (transform.rotation - prev_transform.rotation) / dt;
+        let velocity = ((transform.position - prev_transform.position) / dt) * 0.99995;
+        let angular_velocity = ((transform.rotation - prev_transform.rotation) / dt) * 0.9998;
         
         state_out.update_transform(ei, transform);
         state_out.update_velocity(ei, (velocity, angular_velocity));

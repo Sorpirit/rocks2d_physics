@@ -31,7 +31,7 @@ fn main() {
     scene.add_joint(Joint::RevoluteJoint(RevoluteJoint {
         body1_i: b1,
         body2_i: Some(b2),
-        local_attachment_b1: Vector2::zero(),
+        local_attachment_b1: Vector2::ZERO,
         local_attachment_b2: Vector2::new(1.5, 0.0),
         compliance: 0.0,
     }));

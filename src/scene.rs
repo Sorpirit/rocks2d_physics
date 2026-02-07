@@ -79,6 +79,9 @@ pub mod scene {
         pub body_colors: Vec<Color>,
         
         pub joints: Vec<Joint>,
+
+        pub env_count: u32,
+        body_count_pre_env: usize,
     }
 
     pub struct RigidParameters {
@@ -93,7 +96,7 @@ pub mod scene {
         pub fn default() -> Self {
             Self { 
                 transform: Transform2D::zero(), 
-                velocities: (Vector2::zero(), 0.0), 
+                velocities: (Vector2::ZERO, 0.0), 
                 shape: Shape::Circle(0.5), 
                 density: 1000.0,
                 color: Color::DARKSEAGREEN
@@ -111,6 +114,8 @@ pub mod scene {
                 body_shapes: Vec::with_capacity(capacity), 
                 body_colors: Vec::with_capacity(capacity),
                 joints: Vec::with_capacity(capacity),
+                env_count: 1,
+                body_count_pre_env: 0,
             }
         }
 
@@ -161,7 +166,9 @@ pub mod scene {
 
             self.initial_state.replicate(num_envs);
             
+            self.body_count_pre_env = self.body_count;
             self.body_count *= num_envs as usize;
+            self.env_count = num_envs;
         }
 
         pub fn build_state(&self) -> State {
@@ -172,6 +179,12 @@ pub mod scene {
 
         pub fn build_control(&self) -> Control {
             Control::new(self.body_count)
+        }
+        
+        pub fn get_env_index(&self, ei: usize) -> usize {
+            if self.env_count == 1 { return 0; }
+
+            ei / self.body_count_pre_env
         }
     }
 

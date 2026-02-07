@@ -3,6 +3,7 @@ mod scene;
 mod viewer;
 mod solver;
 mod control;
+mod imgui;
 
 pub use state::state::*;
 pub use scene::scene::*;
